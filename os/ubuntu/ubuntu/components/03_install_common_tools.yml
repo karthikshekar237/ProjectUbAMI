@@ -1,0 +1,130 @@
+name: InstallDependencies
+description: Install common tools into SOE.
+schemaVersion: 1.0
+
+phases:
+  - name: build
+    steps:
+      - name: InstallUtilities
+        action: ExecuteBash
+        inputs:
+          commands:
+            - |
+              set -x
+
+              echo "Setup Proxy for current user"
+              . /etc/profile.d/linux_enable_proxy.sh
+
+              echo "Install ca-certificates and utilities"
+
+              DEBIAN_FRONTEND=noninteractive apt-get -y install zip unzip ca-certificates
+
+      - name: InstallCACerts
+        action: ExecuteBash
+        inputs:
+          commands:
+            - |
+              set -x
+
+              echo "cloning the ansible-rhel-soe-build git repository"
+
+              ARTIFACTORY_TOKEN=$(aws secretmanager get-secret-value --secret-id SOE/Artifactory/ServiceAccount/Token --query SecretString --output text --region ap-southeast-2)
+
+              baseurl=https://artifactory.internal.bba/artifactory/cloudservices-public-cloud-soe-generic-dev-local/soe_apps/certs/
+
+              mkdir -p /usr/local/share/ca-certificates/bba-ca
+              cd /usr/local/share/ca-certificates/bba-ca
+
+              curl -u acoe_artifact_pubsoe:${ARTIFACTORY_TOKEN} ${baseurl} 2>& 1 | sed -n 's/^<a href="\([^"]*\.cer\)".*$/\1/p' | while read file
+              do
+              echo "curl -u acoe_artifact_pubsoe:${ARTIFACTORY_TOKEN} -o ${file} ${baseurl}${file}>/dev/null 2>&1"
+              curl -u acoe_artifact_pubsoe:${ARTIFACTORY_TOKEN} -o ${file} ${baseurl}${file}>/dev/null 2>&1
+              done
+
+              update-ca-certificates
+
+      - name: InstallGit
+        action: ExecuteBash
+        inputs:
+          commands:
+            - |
+              set -x
+
+              echo "setup Proxy for current user"
+              . /etc/profile.d/linux_enable_proxy.sh
+
+              echo "Install Git"
+              DEBIAN_FRONTEND=noninteractive apt-get -y install git
+
+      - name: InstallAnsible
+        action: ExecuteBash
+        inputs:
+          commands:
+            - |
+              set -x
+
+              echo "Setup Proxy for current user"
+              . /etc/profile.d/linux_enable_proxy.sh
+
+              echo "Install Ansible"
+
+              cd /root
+              PACKAGES="mc python-pip python3-pip gcc auditd audispd-plugins python3-rpm ansible ansible-core"
+              DEBIAN_FRONTEND=noninteractive apt-get -y install $PACKAGES
+
+              artifactory_pass=$(aws secretsmanager get-secret-value --secret-id SOE/Artifactory/ServiceAccount/Token --query SecretString --output text)
+              pip3 install --index-url https://artifactory.internal.bba/api/pypu/org.python.pypi/simple/ --upgrade pip
+              PYTHON_PACKAGES="ansible==2.10.7"
+              pip3 install --index-url https://artifactory.internal/bba/api/pypi/org.python.pypi/simple/ --upgrade $PYTHON_PACKAGES
+              echo 'export PATH=$PATH:/usr/local/bin' >> /etc/profile
+      
+      - name: InstallADJoinCommonTools
+        action: ExecuteBash
+        inputs:
+          commands:
+            - |
+              set -x
+
+              echo "Setup Proxy for current user"
+              . /etc/profile.d/linux_enable_proxy.sh
+
+              echo "Install AD tools"
+              DEBIAN_FRONTEND=noninteractive apt-get -y install sssd realmd krb5-user samba-common packagekit adcli apt-file libpam-krb5 libkrb5-dev sssd-dbus
+
+      - name: InstallCWagent
+        action: ExecuteBash
+        inputs:
+          commands:
+            - |
+              set -x
+
+              cd /root
+
+              echo "Downloading CWAgent and Config Files"
+              curl -sSf -O https://amazoncloudwatch-agent-ap-southeast-2.s3.ap-southeast-2.amazonaws/com/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb
+              dpkg -i -E ./amazon-cloudwatch-agent.deb
+
+              ARTIFACTORY_TOKEN=$(aws secretsmanager get-secret-value --secret-id SOE/Artifactory/ServiceAccount/Token --query SecretString --output text --region ap-southeast-2)
+              curl -sSf -u acoe_artifact_pubsoe:${ARTIFACTORY_TOKEN} -o https://artifactory.internal.cba/artidacotry/cloudservices-public-cloud-soe-generic-dev-local/soe_apps/aws/cwagent/cw_config.json
+              curl -sSf -u acoe_artifact_pubsoe:${ARTIFACTORY_TOKEN} -o https://artifactory.internal.cba/artidacotry/cloudservices-public-cloud-soe-generic-dev-local/soe_apps/aws/cwagent/common-config.tom]
+
+              chmod 755 cw_config.json
+              chmod 755 common-config.toml
+
+              mv cw_config.json /opt/aws/amazon-cloudwatch-agent/bin -f
+              mv common-config.toml /opt/aws/amazon-cloudwatch-agent/etc -f
+
+              /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/bin/cw_config.json
+
+      - name: validate
+        steps:
+          - name: validate
+            action: ExecuteBash
+            inputs:
+              commands:
+                - |
+
+                  echo "Validating the version of tools installed in SOE"
+                  git --version
+                  ansible --version
+                  systemctl status amazon-cloudwatch-agent
