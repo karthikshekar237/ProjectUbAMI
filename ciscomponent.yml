@@ -1,0 +1,858 @@
+name: "FixCISBenchmarkWithPamFaillockConfiguration"
+description: "Component to update fstab entry for /tmp, remove Telnet, enable nftables, fix audit log permissions, modify auditd.conf, change permissions of test.rules, remove systemd-journal-remote, mask systemd-journal-upload, configure journal settings, set permissions on cron files and logs, configure SSH settings, update sudoers, update pwquality settings, enable pam_faillock profiles, edit faillock.conf, update common-password, disable and stop apport, set limits.conf parameters, configure sysctl, and ensure pam_faillock is applied in common-account for CIS benchmark compliance."
+schemaVersion: "1.0"
+
+phases:
+  - name: "build"
+    steps:
+      - name: "AddTmpToFstab"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Check if the fstab entry for /tmp already exists
+              if ! grep -q 'tmpfs /tmp' /etc/fstab; then
+                echo "Adding /tmp entry to /etc/fstab"
+                echo "tmpfs /tmp tmpfs defaults,nosuid,noatime,nodev,noexec 0 0" >> /etc/fstab
+              fi
+
+            - |
+              # Remount /tmp to apply the new settings
+              mount -o remount /tmp
+
+      - name: "RemoveTelnet"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Remove Telnet if it is installed
+              if dpkg -l | grep -q telnet; then
+                echo "Removing Telnet..."
+                sudo apt-get remove -y telnet
+              else
+                echo "Telnet is not installed"
+              fi
+
+      - name: "RemoveSystemdJournalRemote"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Remove systemd-journal-remote if it is installed
+              if dpkg -l | grep -q systemd-journal-remote; then
+                echo "Removing systemd-journal-remote..."
+                sudo apt-get remove -y systemd-journal-remote
+              else
+                echo "systemd-journal-remote is not installed"
+              fi
+
+      - name: "EnableNftables"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Enable nftables to start on boot
+              sudo systemctl enable nftables
+
+      - name: "FixAuditLogPermissions"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Set correct permissions and ownership for /var/log/audit/audit.log
+              sudo chmod 640 /var/log/audit/audit.log
+              sudo chown root:root /var/log/audit/audit.log
+
+      - name: "EditAuditConf"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Modify /etc/audit/auditd.conf to set log_group to adm
+              sudo sed -i 's/^log_group.*/log_group = adm/' /etc/audit/auditd.conf
+
+      - name: "ChangeTestRulesPermissions"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Change permissions of /etc/audit/rules.d/test.rules to 755
+              sudo chmod 755 /etc/audit/rules.d/test.rules
+
+      - name: "MaskJournalUploadService"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Mask and stop the systemd-journal-upload service
+              sudo systemctl --now mask systemd-journal-upload.service
+
+      - name: "ConfigureJournalCompress"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Configure /etc/systemd/journal.conf to set Compress=yes
+              sudo sed -i 's/^#Compress=.*/Compress=yes/' /etc/systemd/journal.conf
+
+      - name: "ConfigureJournalStorage"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Configure /etc/systemd/journal.conf to set Storage=persistent
+              sudo sed -i 's/^#Storage=.*/Storage=persistent/' /etc/systemd/journal.conf
+
+      - name: "SetLogPermissions"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Set permissions on all existing log files
+              sudo find /var/log -type f -exec chmod g-wx,o-rwx {} +
+
+      - name: "SetCrontabPermissions"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Set permissions on /etc/crontab
+              sudo chmod 600 /etc/crontab
+
+      - name: "SetCronHourlyPermissions"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Set permissions on /etc/cron.hourly
+              sudo chmod 600 /etc/cron.hourly
+
+      - name: "SetCronDailyPermissions"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Set permissions on /etc/cron.daily
+              sudo chmod 600 /etc/cron.daily
+
+      - name: "SetCronWeeklyPermissions"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Set permissions on /etc/cron.weekly
+              sudo chmod 600 /etc/cron.weekly
+
+      - name: "SetCronMonthlyPermissions"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Set permissions on /etc/cron.monthly
+              sudo chmod 600 /etc/cron.monthly
+
+      - name: "SetCronDPermissions"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Set permissions on /etc/cron.d
+              sudo chmod 600 /etc/cron.d
+
+      - name: "SetSSHPermitRootLogin"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Set PermitRootLogin to no in /etc/ssh/sshd_config
+              sudo sed -i 's/^#PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
+              sudo systemctl restart sshd
+
+      - name: "SetUnapprovedMACsInSSHDConfig"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Add or modify the MACs line with unapproved (weak) MACs before any Include entries in /etc/ssh/sshd_config
+              sudo sed -i '/^Include/i MACs -hmac-md5,hmac-md5-96,hmac-ripemd160,hmac-sha1-96,umac-64@openssh.com,hmac-md5-etm@openssh.com,hmac-md5-96-etm@openssh.com,hmac-ripemd160-etm@openssh.com,hmac-sha1-96-etm@openssh.com,umac-64-etm@openssh.com,umac-128-etm@openssh.com' /etc/ssh/sshd_config
+              sudo systemctl restart sshd
+
+      - name: "SetSSHPermitUserEnvironment"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Set PermitUserEnvironment to no above any Include entries in /etc/ssh/sshd_config
+              sudo sed -i '/^Include/i PermitUserEnvironment no' /etc/ssh/sshd_config
+              sudo systemctl restart sshd
+
+      - name: "SetUnapprovedKexAlgorithmsInSSHDConfig"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Add or modify the KexAlgorithms line with unapproved (weak) KexAlgorithms before any Include entries in /etc/ssh/sshd_config
+              sudo sed -i '/^Include/i KexAlgorithms -diffie-hellman-group1-sha1,diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1' /etc/ssh/sshd_config
+              sudo systemctl restart sshd
+
+      - name: "SetBannerInSSHDConfig"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Add or update the Banner line in /etc/ssh/sshd_config
+              if grep -q '^Banner' /etc/ssh/sshd_config; then
+                sudo sed -i 's/^Banner.*/Banner \/etc\/issue.net/' /etc/ssh/sshd_config
+              else
+                echo "Banner /etc/issue.net" | sudo tee -a /etc/ssh/sshd_config
+              fi
+              sudo systemctl restart sshd
+
+      - name: "SetMaxAuthTriesInSSHDConfig"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Set MaxAuthTries to 4 above any Include or Match entries in /etc/ssh/sshd_config
+              if grep -q '^MaxAuthTries' /etc/ssh/sshd_config; then
+                sudo sed -i 's/^MaxAuthTries.*/MaxAuthTries 4/' /etc/ssh/sshd_config
+              else
+                echo "MaxAuthTries 4" | sudo tee -a /etc/ssh/sshd_config
+              fi
+              sudo systemctl restart sshd
+
+      - name: "SetMaxStartupsInSSHDConfig"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Set MaxStartups to 10:30:60 above any Include entries in /etc/ssh/sshd_config
+              if grep -q '^MaxStartups' /etc/ssh/sshd_config; then
+                sudo sed -i 's/^MaxStartups.*/MaxStartups 10:30:60/' /etc/ssh/sshd_config
+              else
+                echo "MaxStartups 10:30:60" | sudo tee -a /etc/ssh/sshd_config
+              fi
+              sudo systemctl restart sshd
+
+      - name: "SetLoginGraceTimeInSSHDConfig"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Set LoginGraceTime to 60 seconds or less above any Include entries in /etc/ssh/sshd_config
+              if grep -q '^LoginGraceTime' /etc/ssh/sshd_config; then
+                sudo sed -i 's/^LoginGraceTime.*/LoginGraceTime 60/' /etc/ssh/sshd_config
+              else
+                echo "LoginGraceTime 60" | sudo tee -a /etc/ssh/sshd_config
+              fi
+              sudo systemctl restart sshd
+
+      - name: "SetClientAliveIntervalAndCountMaxInSSHDConfig"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Set ClientAliveInterval to 15 and ClientAliveCountMax to 3 above any Include and Match entries
+              if grep -q '^ClientAliveInterval' /etc/ssh/sshd_config; then
+                sudo sed -i 's/^ClientAliveInterval.*/ClientAliveInterval 15/' /etc/ssh/sshd_config
+              else
+                echo "ClientAliveInterval 15" | sudo tee -a /etc/ssh/sshd_config
+              fi
+              
+              if grep -q '^ClientAliveCountMax' /etc/ssh/sshd_config; then
+                sudo sed -i 's/^ClientAliveCountMax.*/ClientAliveCountMax 3/' /etc/ssh/sshd_config
+              else
+                echo "ClientAliveCountMax 3" | sudo tee -a /etc/ssh/sshd_config
+              fi
+              sudo systemctl restart sshd
+
+      - name: "EditSudoersForLogFile"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Add Defaults logfile="/var/log/sudo.log" to /etc/sudoers using visudo
+              echo 'Defaults logfile="/var/log/sudo.log"' | sudo EDITOR='tee -a' visudo
+
+      - name: "EditSudoersForUsePTY"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Add Defaults use_pty to /etc/sudoers using visudo
+              echo 'Defaults use_pty' | sudo EDITOR='tee -a' visudo
+
+      - name: "EditPwqualityConfig"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Edit /etc/security/pwquality.conf to set minlen = 14 and uncomment minclass = 4
+              sudo sed -i 's/^#\?minlen = .*/minlen = 14/' /etc/security/pwquality.conf
+              sudo sed -i 's/^#\?minclass = .*/minclass = 4/' /etc/security/pwquality.conf
+
+      - name: "ConfigurePamFaillockProfiles"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Create the first pam_faillock profile for denying access
+              echo "Creating the first profile for pam_faillock to deny access"
+              cat <<EOT > /usr/share/pam-configs/faillock
+              Name: Enable pam_faillock to deny access
+              Default: yes
+              Priority: 0
+              Auth-Type: Primary
+              Auth:
+              [default=die] pam_faillock.so authfail
+              EOT
+
+            - |
+              # Create the second pam_faillock profile for notifying failed login attempts
+              echo "Creating the second profile for pam_faillock notifications"
+              cat <<EOT > /usr/share/pam-configs/faillock_notify
+              Name: Notify of failed login attempts and reset count upon success
+              Default: yes
+              Priority: 1024
+              Auth-Type: Primary
+              Auth:
+              requisite pam_faillock.so preauth
+              Account-Type: Primary
+              Account:
+              required pam_faillock.so
+              EOT
+
+            - |
+              # Enable the new pam_faillock profiles using pam-auth-update
+              echo "Enabling the pam_faillock profiles"
+              pam-auth-update --enable faillock
+              pam-auth-update --enable faillock_notify
+
+      - name: "EditPamCommonAccount"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Ensure 'account required pam_faillock.so' is present at the end of /etc/pam.d/common-account
+              if ! grep -q '^account required pam_faillock.so' /etc/pam.d/common-account; then
+                echo "Adding 'account required pam_faillock.so' to /etc/pam.d/common-account"
+                echo 'account required pam_faillock.so' | sudo tee -a /etc/pam.d/common-account
+              else
+                echo "'account required pam_faillock.so' is already present in /etc/pam.d/common-account"
+              fi
+
+      - name: "EditFaillockConfig"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Uncomment and set fail_interval = 900 in /etc/security/faillock.conf
+              if grep -q '^#fail_interval = 900' /etc/security/faillock.conf; then
+                echo "Uncommenting and setting fail_interval = 900 in /etc/security/faillock.conf"
+                sudo sed -i 's/^#fail_interval = 900/fail_interval = 900/' /etc/security/faillock.conf
+              else
+                echo "fail_interval is already set to 900 or uncommented"
+              fi
+
+      - name: "EditFaillockUnlockTime"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Uncomment and set unlock_time = 600 in /etc/security/faillock.conf
+              if grep -q '^#unlock_time = 600' /etc/security/faillock.conf; then
+                echo "Uncommenting and setting unlock_time = 600 in /etc/security/faillock.conf"
+                sudo sed -i 's/^#unlock_time = 600/unlock_time = 600/' /etc/security/faillock.conf
+              else
+                echo "unlock_time is already set to 600 or uncommented"
+              fi
+
+      - name: "EditPamCommonPassword"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Add the line 'password sufficient pam_unix.so remember=5' to /etc/pam.d/common-password if not already present
+              if ! grep -q '^password\s\+sufficient\s\+pam_unix.so\s\+remember=5' /etc/pam.d/common-password; then
+                echo "Adding 'password sufficient pam_unix.so remember=5' to /etc/pam.d/common-password"
+                echo 'password sufficient pam_unix.so remember=5' | sudo tee -a /etc/pam.d/common-password
+              else
+                echo "'password sufficient pam_unix.so remember=5' is already present in /etc/pam.d/common-password"
+              fi
+
+      - name: "DisableApport"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Set enabled=0 in /etc/default/apport to disable apport
+              if grep -q '^enabled=1' /etc/default/apport; then
+                echo "Disabling apport by setting enabled=0 in /etc/default/apport"
+                sudo sed -i 's/^enabled=1/enabled=0/' /etc/default/apport
+              elif ! grep -q '^enabled=0' /etc/default/apport; then
+                echo "Adding 'enabled=0' to /etc/default/apport"
+                echo 'enabled=0' | sudo tee -a /etc/default/apport
+              else
+                echo "Apport is already disabled"
+              fi
+
+            - |
+              # Stop the apport service
+              echo "Stopping apport service"
+              sudo systemctl stop apport
+
+      - name: "AddHardCoreLimit"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Add the line '* hard core 0' to /etc/security/limits.conf if not already present
+              if ! grep -q '^*     hard       core     0' /etc/security/limits.conf; then
+                echo "Adding '* hard core 0' to /etc/security/limits.conf"
+                echo '*     hard       core     0' | sudo tee -a /etc/security/limits.conf
+              else
+                echo "'* hard core 0' is already present in /etc/security/limits.conf"
+              fi
+
+      - name: "SetFsSuidDumpable"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Set fs.suid_dumpable to 0 in /etc/sysctl.conf if not already set
+              if grep -q '^fs.suid_dumpable' /etc/sysctl.conf; then
+                sudo sed -i 's/^fs.suid_dumpable.*/fs.suid_dumpable = 0/' /etc/sysctl.conf
+              else
+                echo "fs.suid_dumpable = 0" | sudo tee -a /etc/sysctl.conf
+              fi
+
+            - |
+              # Apply the new sysctl configuration
+              sudo sysctl -p
+
+      - name: "ConfigurePostfixInetInterfaces"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Add or modify the inet_interfaces line in the RECEIVING MAIL section of /etc/postfix/main.cf
+              if grep -q '^inet_interfaces' /etc/postfix/main.cf; then
+                sudo sed -i 's/^inet_interfaces.*/inet_interfaces = loopback-only/' /etc/postfix/main.cf
+              else
+                echo "inet_interfaces = loopback-only" | sudo tee -a /etc/postfix/main.cf
+              fi
+
+            - |
+              # Restart the postfix service
+              sudo systemctl restart postfix
+
+  - name: "validate"
+    steps:
+      - name: "ValidateFstabEntry"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that the /tmp entry has been added correctly
+              if grep -q 'tmpfs /tmp' /etc/fstab; then
+                echo "/tmp entry successfully added to /etc/fstab"
+              else
+                echo "Failed to add /tmp entry to /etc/fstab" >&2
+                exit 1
+
+      - name: "ValidateTelnetRemoval"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that Telnet has been removed
+              if ! dpkg -l | grep -q telnet; then
+                echo "Telnet successfully removed"
+              else
+                echo "Telnet removal failed" >&2
+                exit 1
+
+      - name: "ValidateSystemdJournalRemoteRemoval"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that systemd-journal-remote has been removed
+              if ! dpkg -l | grep -q systemd-journal-remote; then
+                echo "systemd-journal-remote successfully removed"
+              else
+                echo "systemd-journal-remote removal failed" >&2
+                exit 1
+
+      - name: "ValidateNftablesEnabled"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that nftables is enabled
+              if systemctl is-enabled nftables | grep -q 'enabled'; then
+                echo "nftables is enabled"
+              else
+                echo "Failed to enable nftables" >&2
+                exit 1
+
+      - name: "ValidateAuditLogPermissions"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate permissions and ownership of /var/log/audit/audit.log
+              if [ "$(stat -c %a /var/log/audit/audit.log)" -eq 640 ] && [ "$(stat -c %U:%G /var/log/audit/audit.log)" = "root:root" ]; then
+                echo "Audit log permissions and ownership are correct"
+              else
+                echo "Audit log permissions or ownership incorrect" >&2
+                exit 1
+
+      - name: "ValidateAuditConfModification"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that the log_group in /etc/audit/auditd.conf has been set to adm
+              if grep -q '^log_group = adm' /etc/audit/auditd.conf; then
+                echo "log_group is correctly set to adm"
+              else
+                echo "log_group modification failed" >&2
+                exit 1
+
+      - name: "ValidateTestRulesPermissions"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that /etc/audit/rules.d/test.rules permissions are set to 755
+              if [ "$(stat -c %a /etc/audit/rules.d/test.rules)" -eq 755 ]; then
+                echo "test.rules permissions are correct"
+              else
+                echo "test.rules permissions are incorrect" >&2
+                exit 1
+
+      - name: "ValidateJournalUploadServiceMask"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that systemd-journal-upload.service is masked
+              if systemctl is-enabled systemd-journal-upload.service | grep -q 'masked'; then
+                echo "systemd-journal-upload service is masked"
+              else
+                echo "Failed to mask systemd-journal-upload service" >&2
+                exit 1
+
+      - name: "ValidateJournalCompress"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that compress is set to yes in /etc/systemd/journal.conf
+              if grep -q '^Compress=yes' /etc/systemd/journal.conf; then
+                echo "Journal compress is set to yes"
+              else
+                echo "Failed to configure journal compress" >&2
+                exit 1
+
+      - name: "ValidateJournalStorage"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that Storage is set to persistent in /etc/systemd/journal.conf
+              if grep -q '^Storage=persistent' /etc/systemd/journal.conf; then
+                echo "Journal storage is set to persistent"
+              else
+                echo "Failed to configure journal storage" >&2
+                exit 1
+
+      - name: "ValidateLogPermissions"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that log permissions have been set correctly
+              if find /var/log -type f -exec stat -c '%a' {} + | grep -qv '600'; then
+                echo "Log permissions not set correctly" >&2
+                exit 1
+              else
+                echo "Log permissions are set correctly"
+              fi
+
+      - name: "ValidateCronPermissions"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate permissions for cron files
+              if [ "$(stat -c %a /etc/cron.hourly)" -eq 600 ] && [ "$(stat -c %a /etc/cron.daily)" -eq 600 ] && [ "$(stat -c %a /etc/cron.weekly)" -eq 600 ] && [ "$(stat -c %a /etc/cron.monthly)" -eq 600 ] && [ "$(stat -c %a /etc/cron.d)" -eq 600 ] && [ "$(stat -c %a /etc/crontab)" -eq 600 ]; then
+                echo "Cron file permissions are correct"
+              else
+                echo "Cron file permissions are incorrect" >&2
+                exit 1
+
+      - name: "ValidateSSHPermitRootLogin"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that PermitRootLogin is set to no in /etc/ssh/sshd_config
+              if grep -q '^PermitRootLogin no' /etc/ssh/sshd_config; then
+                echo "PermitRootLogin is correctly set to no"
+              else
+                echo "Failed to set PermitRootLogin to no" >&2
+                exit 1
+
+      - name: "ValidateUnapprovedMACsInSSHDConfig"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that unapproved MACs are added to /etc/ssh/sshd_config
+              if grep -q '^MACs -hmac-md5' /etc/ssh/sshd_config; then
+                echo "Unapproved MACs successfully added"
+              else
+                echo "Failed to add unapproved MACs" >&2
+                exit 1
+
+      - name: "ValidateSSHPermitUserEnvironment"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that PermitUserEnvironment is set to no in /etc/ssh/sshd_config
+              if grep -q '^PermitUserEnvironment no' /etc/ssh/sshd_config; then
+                echo "PermitUserEnvironment is correctly set to no"
+              else
+                echo "Failed to set PermitUserEnvironment to no" >&2
+                exit 1
+
+      - name: "ValidateUnapprovedKexAlgorithmsInSSHDConfig"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that unapproved KexAlgorithms are added to /etc/ssh/sshd_config
+              if grep -q '^KexAlgorithms -diffie-hellman-group1-sha1' /etc/ssh/sshd_config; then
+                echo "Unapproved KexAlgorithms successfully added"
+              else
+                echo "Failed to add unapproved KexAlgorithms" >&2
+                exit 1
+
+      - name: "ValidateBannerInSSHDConfig"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that the Banner line is set to /etc/issue.net in /etc/ssh/sshd_config
+              if grep -q '^Banner /etc/issue.net' /etc/ssh/sshd_config; then
+                echo "Banner is correctly set to /etc/issue.net"
+              else
+                echo "Failed to set Banner to /etc/issue.net" >&2
+                exit 1
+
+      - name: "ValidateMaxAuthTriesInSSHDConfig"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that MaxAuthTries is set to 4 or less in /etc/ssh/sshd_config
+              if grep -q '^MaxAuthTries 4' /etc/ssh/sshd_config; then
+                echo "MaxAuthTries is correctly set to 4"
+              else
+                echo "Failed to set MaxAuthTries to 4" >&2
+                exit 1
+
+      - name: "ValidateMaxStartupsInSSHDConfig"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that MaxStartups is set to 10:30:60 in /etc/ssh/sshd_config
+              if grep -q '^MaxStartups 10:30:60' /etc/ssh/sshd_config; then
+                echo "MaxStartups is correctly set to 10:30:60"
+              else
+                echo "Failed to set MaxStartups to 10:30:60" >&2
+                exit 1
+
+      - name: "ValidateLoginGraceTimeInSSHDConfig"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that LoginGraceTime is set to 60 seconds or less in /etc/ssh/sshd_config
+              if grep -q '^LoginGraceTime 60' /etc/ssh/sshd_config; then
+                echo "LoginGraceTime is correctly set to 60 seconds"
+              else
+                echo "Failed to set LoginGraceTime to 60 seconds" >&2
+                exit 1
+
+      - name: "ValidateClientAliveIntervalAndCountMaxInSSHDConfig"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that ClientAliveInterval is set to 15 and ClientAliveCountMax is set to 3 in /etc/ssh/sshd_config
+              if grep -q '^ClientAliveInterval 15' /etc/ssh/sshd_config && grep -q '^ClientAliveCountMax 3' /etc/ssh/sshd_config; then
+                echo "ClientAliveInterval and ClientAliveCountMax are correctly set"
+              else
+                echo "Failed to set ClientAliveInterval and ClientAliveCountMax" >&2
+                exit 1
+
+      - name: "ValidateSudoersLogFile"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that sudoers contains the logfile configuration
+              if sudo grep -q 'Defaults logfile="/var/log/sudo.log"' /etc/sudoers; then
+                echo "Sudo logfile configuration added successfully"
+              else
+                echo "Failed to add sudo logfile configuration" >&2
+                exit 1
+
+      - name: "ValidateSudoersUsePTY"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that sudoers contains the use_pty configuration
+              if sudo grep -q 'Defaults use_pty' /etc/sudoers; then
+                echo "Sudo use_pty configuration added successfully"
+              else
+                echo "Failed to add sudo use_pty configuration" >&2
+                exit 1
+
+      - name: "ValidatePwqualityMinlenAndMinclass"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that minlen is set to 14 and minclass is set to 4 in /etc/security/pwquality.conf
+              if grep -q '^minlen = 14' /etc/security/pwquality.conf && grep -q '^minclass = 4' /etc/security/pwquality.conf; then
+                echo "minlen and minclass are correctly set"
+              else
+                echo "Failed to set minlen or minclass in /etc/security/pwquality.conf" >&2
+                exit 1
+
+      - name: "ValidatePamFaillockProfiles"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that the pam_faillock profiles are created
+              if [ -f /usr/share/pam-configs/faillock ] && [ -f /usr/share/pam-configs/faillock_notify ]; then
+                echo "pam_faillock profiles are created"
+              else
+                echo "Failed to create pam_faillock profiles" >&2
+                exit 1
+
+      - name: "ValidatePamCommonAccount"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that 'account required pam_faillock.so' is present in /etc/pam.d/common-account
+              if grep -q '^account required pam_faillock.so' /etc/pam.d/common-account; then
+                echo "'account required pam_faillock.so' is correctly added to /etc/pam.d/common-account"
+              else
+                echo "Failed to add 'account required pam_faillock.so' to /etc/pam.d/common-account" >&2
+                exit 1
+
+      - name: "ValidateFaillockConfig"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that fail_interval is set to 900 in /etc/security/faillock.conf
+              if grep -q '^fail_interval = 900' /etc/security/faillock.conf; then
+                echo "fail_interval is correctly set to 900"
+              else
+                echo "Failed to set fail_interval to 900 in /etc/security/faillock.conf" >&2
+                exit 1
+
+      - name: "ValidateFaillockUnlockTime"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that unlock_time is set to 600 in /etc/security/faillock.conf
+              if grep -q '^unlock_time = 600' /etc/security/faillock.conf; then
+                echo "unlock_time is correctly set to 600"
+              else
+                echo "Failed to set unlock_time to 600 in /etc/security/faillock.conf" >&2
+                exit 1
+
+      - name: "ValidatePamCommonPassword"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that 'password sufficient pam_unix.so remember=5' is added to /etc/pam.d/common-password
+              if grep -q '^password\s\+sufficient\s\+pam_unix.so\s\+remember=5' /etc/pam.d/common-password; then
+                echo "'password sufficient pam_unix.so remember=5' is correctly added"
+              else
+                echo "Failed to add 'password sufficient pam_unix.so remember=5' to /etc/pam.d/common-password" >&2
+                exit 1
+
+      - name: "ValidateApportDisabled"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that apport is disabled by checking if enabled=0 in /etc/default/apport
+              if grep -q '^enabled=0' /etc/default/apport; then
+                echo "Apport is disabled"
+              else
+                echo "Failed to disable apport" >&2
+                exit 1
+
+      - name: "ValidateApportStopped"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that the apport service has been stopped
+              if ! systemctl is-active apport; then
+                echo "Apport service successfully stopped"
+              else
+                echo "Failed to stop apport service" >&2
+                exit 1
+
+      - name: "ValidateHardCoreLimit"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that the hard core limit is set correctly in /etc/security/limits.conf
+              if grep -q '^\*     hard       core     0' /etc/security/limits.conf; then
+                echo "Hard core limit is correctly set"
+              else
+                echo "Failed to set hard core limit" >&2
+                exit 1
+
+      - name: "ValidateFsSuidDumpable"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that fs.suid_dumpable is set to 0 in /etc/sysctl.conf
+              if grep -q '^fs.suid_dumpable = 0' /etc/sysctl.conf; then
+                echo "fs.suid_dumpable is correctly set to 0"
+              else
+                echo "Failed to set fs.suid_dumpable to 0" >&2
+                exit 1
+
+      - name: "ValidatePostfixInetInterfaces"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that Postfix inet_interfaces is set to loopback-only
+              if grep -q '^inet_interfaces = loopback-only' /etc/postfix/main.cf; then
+                echo "inet_interfaces is correctly set to loopback-only"
+              else
+                echo "Failed to set inet_interfaces to loopback-only" >&2
+                exit 1
