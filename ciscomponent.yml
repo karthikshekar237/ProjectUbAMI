@@ -1,5 +1,5 @@
 name: "FixCISBenchmarkWithPamFaillockConfiguration"
-description: "Component to update fstab entry for /tmp, remove Telnet, enable nftables, fix audit log permissions, modify auditd.conf, change permissions of test.rules, remove systemd-journal-remote, mask systemd-journal-upload, configure journal settings, set permissions on cron files and logs, configure SSH settings, update sudoers, update pwquality settings, enable pam_faillock profiles, edit faillock.conf, update common-password, disable and stop apport, set limits.conf parameters, configure sysctl, and ensure pam_faillock is applied in common-account for CIS benchmark compliance."
+description: "Component to update fstab entries, remove Telnet, enable nftables, fix audit log permissions, modify auditd.conf, change permissions of test.rules, remove systemd-journal-remote, mask systemd-journal-upload, configure journal settings, set permissions on cron files and logs, configure SSH settings, update sudoers, update pwquality settings, enable pam_faillock profiles, edit faillock.conf, update common-password, disable and stop apport, set limits.conf parameters, configure sysctl, ensure pam_faillock is applied in common-account for CIS benchmark compliance, purge rsync, disable autofs, and add AIDE cron job."
 schemaVersion: "1.0"
 
 phases:
@@ -15,10 +15,36 @@ phases:
                 echo "Adding /tmp entry to /etc/fstab"
                 echo "tmpfs /tmp tmpfs defaults,nosuid,noatime,nodev,noexec 0 0" >> /etc/fstab
               fi
-
             - |
               # Remount /tmp to apply the new settings
               mount -o remount /tmp
+
+      - name: "AddDevShmToFstab"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Check if the fstab entry for /dev/shm already exists
+              if ! grep -q 'tmpfs /dev/shm' /etc/fstab; then
+                echo "Adding /dev/shm entry to /etc/fstab"
+                echo "tmpfs /dev/shm tmpfs defaults,noexec,nodev,nosuid,seclabel 0 0" >> /etc/fstab
+              fi
+            - |
+              # Remount /dev/shm to apply the new settings
+              mount -o remount /dev/shm
+
+      - name: "DisableAutofs"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Disable the autofs service if it is active
+              if systemctl is-enabled autofs; then
+                echo "Disabling autofs..."
+                sudo systemctl disable autofs
+              else
+                echo "autofs is already disabled"
+              fi
 
       - name: "RemoveTelnet"
         action: "ExecuteBash"
@@ -44,6 +70,19 @@ phases:
                 sudo apt-get remove -y systemd-journal-remote
               else
                 echo "systemd-journal-remote is not installed"
+              fi
+
+      - name: "PurgeRsync"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Purge rsync if it is installed
+              if dpkg -l | grep -q rsync; then
+                echo "Purging rsync..."
+                sudo apt purge -y rsync
+              else
+                echo "rsync is not installed"
               fi
 
       - name: "EnableNftables"
@@ -446,9 +485,22 @@ phases:
               # Restart the postfix service
               sudo systemctl restart postfix
 
+      - name: "AddRootUserCronAideCheck"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Add AIDE check to root user's crontab
+              if ! sudo crontab -l | grep -q '/usr/sbin/aide --check'; then
+                echo "Adding AIDE check entry to root's crontab"
+                (sudo crontab -l 2>/dev/null; echo "0 5 * * * /usr/sbin/aide --check") | sudo crontab -
+              else
+                echo "AIDE check entry already exists in root's crontab"
+              fi
+
   - name: "validate"
     steps:
-      - name: "ValidateFstabEntry"
+      - name: "ValidateFstabEntryTmp"
         action: "ExecuteBash"
         inputs:
           commands:
@@ -458,6 +510,30 @@ phases:
                 echo "/tmp entry successfully added to /etc/fstab"
               else
                 echo "Failed to add /tmp entry to /etc/fstab" >&2
+                exit 1
+
+      - name: "ValidateFstabEntryDevShm"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that the /dev/shm entry has been added correctly
+              if grep -q 'tmpfs /dev/shm' /etc/fstab; then
+                echo "/dev/shm entry successfully added to /etc/fstab"
+              else
+                echo "Failed to add /dev/shm entry to /etc/fstab" >&2
+                exit 1
+
+      - name: "ValidateAutofsDisabled"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that autofs is disabled
+              if ! systemctl is-enabled autofs; then
+                echo "autofs successfully disabled"
+              else
+                echo "Failed to disable autofs" >&2
                 exit 1
 
       - name: "ValidateTelnetRemoval"
@@ -770,7 +846,7 @@ phases:
               if grep -q '^fail_interval = 900' /etc/security/faillock.conf; then
                 echo "fail_interval is correctly set to 900"
               else
-                echo "Failed to set fail_interval to 900 in /etc/security/faillock.conf" >&2
+                echo "Failed to set fail_interval to 900" >&2
                 exit 1
 
       - name: "ValidateFaillockUnlockTime"
@@ -782,7 +858,7 @@ phases:
               if grep -q '^unlock_time = 600' /etc/security/faillock.conf; then
                 echo "unlock_time is correctly set to 600"
               else
-                echo "Failed to set unlock_time to 600 in /etc/security/faillock.conf" >&2
+                echo "Failed to set unlock_time to 600" >&2
                 exit 1
 
       - name: "ValidatePamCommonPassword"
@@ -855,4 +931,16 @@ phases:
                 echo "inet_interfaces is correctly set to loopback-only"
               else
                 echo "Failed to set inet_interfaces to loopback-only" >&2
+                exit 1
+
+      - name: "ValidateAideCheckInRootCrontab"
+        action: "ExecuteBash"
+        inputs:
+          commands:
+            - |
+              # Validate that AIDE check entry has been added to root's crontab
+              if sudo crontab -l | grep -q '/usr/sbin/aide --check'; then
+                echo "AIDE check entry successfully added to root's crontab"
+              else
+                echo "Failed to add AIDE check entry to root's crontab" >&2
                 exit 1
